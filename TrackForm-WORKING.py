@@ -39,8 +39,8 @@ if args.output:
 # Define ideal angle ranges for sprinting
 IDEAL_ANGLES = {
     'hip': (85, 175),  # Updated hip flexion angle
-    'knee': (90, 165),  # Knee flexion during recovery phase
-    'ankle': (90, 115),  # Ankle dorsiflexion
+    'knee': (90, 170),  # Knee flexion during recovery phase
+    'ankle': (115, 140),  # Ankle dorsiflexion (shin to top of foot, that's why angle is so large)
     'armpit': (40, 60),  # Arm swing angle
     'elbow': (35, 90),  # Elbow flexion
 }
@@ -74,15 +74,42 @@ def is_angle_correct(angle, joint):
         return IDEAL_ANGLES[joint][0] <= angle <= IDEAL_ANGLES[joint][1]
     return True  # For joints we're not checking, assume correct
 
-def provide_feedback(frame, joint, angle, is_correct):
+# Global variable to keep track of feedback messages
+feedback_messages = []
+
+def provide_feedback(joint, angle, is_correct):
+    global feedback_messages
     if not is_correct:
-        feedback = f"Adjust {joint}: {angle:.1f}"
-        cv2.putText(frame, feedback, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        joint_type = joint.split()[-1]  # Extract joint type (e.g., "armpit" from "left armpit")
+        ideal_range = IDEAL_ANGLES.get(joint_type, (0, 180))  # Get ideal range, default to (0, 180) if not found
+        
+        if angle < ideal_range[0]:
+            action = "Raise"
+            difference = ideal_range[0] - angle
+        elif angle > ideal_range[1]:
+            action = "Lower"
+            difference = angle - ideal_range[1]
+        else:
+            action = "Adjust"  # Fallback, should rarely occur
+            difference = 0
+        
+        feedback = f"{action} {joint} by {difference:.1f}°"
+        feedback_messages.append(feedback)
+
+def display_feedback(frame):
+    y_offset = 50  # Increased initial y_offset
+    for i, message in enumerate(feedback_messages):
+        cv2.putText(frame, message, (10, y_offset), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        y_offset += 40  # Increased spacing between lines
 
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
+
+    # Clear feedback messages at the start of each frame
+    feedback_messages = []
 
     # Convert the BGR image to RGB
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -111,7 +138,7 @@ while cap.isOpened():
         left_armpit_angle = calculate_angle(left_elbow, left_shoulder, left_hip)
         is_left_armpit_correct = is_angle_correct(left_armpit_angle, 'armpit')
         draw_angle(frame, left_shoulder, left_armpit_angle, is_left_armpit_correct)
-        provide_feedback(frame, 'left armpit', left_armpit_angle, is_left_armpit_correct)
+        provide_feedback('left armpit', left_armpit_angle, is_left_armpit_correct)
 
         # Right armpit
         right_shoulder = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
@@ -120,21 +147,21 @@ while cap.isOpened():
         right_armpit_angle = calculate_angle(right_elbow, right_shoulder, right_hip)
         is_right_armpit_correct = is_angle_correct(right_armpit_angle, 'armpit')
         draw_angle(frame, right_shoulder, right_armpit_angle, is_right_armpit_correct)
-        provide_feedback(frame, 'right armpit', right_armpit_angle, is_right_armpit_correct)
+        provide_feedback('right armpit', right_armpit_angle, is_right_armpit_correct)
 
         # Left elbow
         left_wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
         left_elbow_angle = calculate_angle(left_shoulder, left_elbow, left_wrist)
         is_left_elbow_correct = is_angle_correct(left_elbow_angle, 'elbow')
         draw_angle(frame, left_elbow, left_elbow_angle, is_left_elbow_correct)
-        provide_feedback(frame, 'left elbow', left_elbow_angle, is_left_elbow_correct)
+        provide_feedback('left elbow', left_elbow_angle, is_left_elbow_correct)
 
         # Right elbow
         right_wrist = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
         right_elbow_angle = calculate_angle(right_shoulder, right_elbow, right_wrist)
         is_right_elbow_correct = is_angle_correct(right_elbow_angle, 'elbow')
         draw_angle(frame, right_elbow, right_elbow_angle, is_right_elbow_correct)
-        provide_feedback(frame, 'right elbow', right_elbow_angle, is_right_elbow_correct)
+        provide_feedback('right elbow', right_elbow_angle, is_right_elbow_correct)
 
         # Left knee
         left_hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
@@ -143,7 +170,7 @@ while cap.isOpened():
         left_knee_angle = calculate_angle(left_hip, left_knee, left_ankle)
         is_left_knee_correct = is_angle_correct(left_knee_angle, 'knee')
         draw_angle(frame, left_knee, left_knee_angle, is_left_knee_correct)
-        provide_feedback(frame, 'left knee', left_knee_angle, is_left_knee_correct)
+        provide_feedback('left knee', left_knee_angle, is_left_knee_correct)
 
         # Right knee
         right_hip = [landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y]
@@ -152,35 +179,38 @@ while cap.isOpened():
         right_knee_angle = calculate_angle(right_hip, right_knee, right_ankle)
         is_right_knee_correct = is_angle_correct(right_knee_angle, 'knee')
         draw_angle(frame, right_knee, right_knee_angle, is_right_knee_correct)
-        provide_feedback(frame, 'right knee', right_knee_angle, is_right_knee_correct)
+        provide_feedback('right knee', right_knee_angle, is_right_knee_correct)
 
         # Left hip
         left_shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
         left_hip_angle = calculate_angle(left_shoulder, left_hip, left_knee)
         is_left_hip_correct = is_angle_correct(left_hip_angle, 'hip')
         draw_angle(frame, left_hip, left_hip_angle, is_left_hip_correct)
-        provide_feedback(frame, 'left hip', left_hip_angle, is_left_hip_correct)
+        provide_feedback('left hip', left_hip_angle, is_left_hip_correct)
 
         # Right hip
         right_shoulder = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
         right_hip_angle = calculate_angle(right_shoulder, right_hip, right_knee)
         is_right_hip_correct = is_angle_correct(right_hip_angle, 'hip')
         draw_angle(frame, right_hip, right_hip_angle, is_right_hip_correct)
-        provide_feedback(frame, 'right hip', right_hip_angle, is_right_hip_correct)
+        provide_feedback('right hip', right_hip_angle, is_right_hip_correct)
 
         # Left ankle
         left_toe = [landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value].x, landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value].y]
         left_ankle_angle = calculate_angle(left_knee, left_ankle, left_toe)
         is_left_ankle_correct = is_angle_correct(left_ankle_angle, 'ankle')
         draw_angle(frame, left_ankle, left_ankle_angle, is_left_ankle_correct)
-        provide_feedback(frame, 'left ankle', left_ankle_angle, is_left_ankle_correct)
+        provide_feedback('left ankle', left_ankle_angle, is_left_ankle_correct)
 
         # Right ankle
         right_toe = [landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value].y]
         right_ankle_angle = calculate_angle(right_knee, right_ankle, right_toe)
         is_right_ankle_correct = is_angle_correct(right_ankle_angle, 'ankle')
         draw_angle(frame, right_ankle, right_ankle_angle, is_right_ankle_correct)
-        provide_feedback(frame, 'right ankle', right_ankle_angle, is_right_ankle_correct)
+        provide_feedback('right ankle', right_ankle_angle, is_right_ankle_correct)
+
+    # Display all feedback after processing all joints
+    display_feedback(frame)
 
     # Display the frame
     cv2.imshow('Sprinting Form Analysis', frame)
